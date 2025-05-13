@@ -50,17 +50,20 @@ cd /home/sunqianpu/share_project/repo/lerobot
 export CUDA_VISIBLE_DEVICES=0
 # agilex_build_blocks agilex_groceries agilex_fold_pants  agilex_pour_tea  agilex_stack_basket agilex_pour_bowl
 POLICY_TYPE=act
-TASK_NAME=/share/project/lvhuaihai/robot_data/lerobot/realman/rm_groceries
-JOB_NAME=realman_baseline_groceries
+DATASET_ROOT=/share/project/qianpusun/data/lerobot_data/HuaihaiLyu/pika_groceries_400
+DATASET_NAME=basename $DATASET_ROOT
+MACHINE_NAME=basename $DATASET_ROOT | cut -d'_' -f1
+
+JOB_NAME=${MACHINE_NAME}_baseline_groceires_400
 
 TIMESTAMP=$(date +%Y%m%d_%H%M%S)
-OUTPUT_DIR=outputs/train/${POLICY_TYPE}/${TIMESTAMP}_${JOB_NAME}
+OUTPUT_DIR=outputs/train/${MACHINE_NAME}/${POLICY_TYPE}/${TIMESTAMP}_${JOB_NAME}
 mkdir -p $OUTPUT_DIR
 LOG_FILE=$OUTPUT_DIR/train.log
 
 python lerobot/scripts/train.py \
-  --dataset.repo_id=HuaihaiLyu/rm_groceries \
-  --dataset.root=/share/project/lvhuaihai/robot_data/lerobot/realman/rm_groceries \
+  --dataset.repo_id=HuaihaiLyu/$DATASET_NAME \
+  --dataset.root=$DATASET_ROOT\
   --policy.type=$POLICY_TYPE \
   --output_dir=$OUTPUT_DIR\
   --job_name=${JOB_NAME} \
