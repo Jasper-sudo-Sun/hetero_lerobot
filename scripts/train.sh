@@ -1,4 +1,4 @@
-cd /home/sunqianpu/share_project/repo/lerobot
+
 
 # ------------------nohup multi-task train------------------
 # TASKS=(
@@ -47,20 +47,23 @@ cd /home/sunqianpu/share_project/repo/lerobot
 # done
 
 # # ------------------train------------------
+source /home/sunqianpu/miniconda3/bin/activate 
+conda activate lerobot
+cd /home/sunqianpu/share_project/repo/lerobot
 export CUDA_VISIBLE_DEVICES=0
 # agilex_build_blocks agilex_groceries agilex_fold_pants  agilex_pour_tea  agilex_stack_basket agilex_pour_bowl
-POLICY_TYPE=act
-DATASET_ROOT=/share/project/qianpusun/data/lerobot_data/HuaihaiLyu/pika_groceries_400
-DATASET_NAME=basename $DATASET_ROOT
-MACHINE_NAME=basename $DATASET_ROOT | cut -d'_' -f1
+POLICY_TYPE=diffusion
+DATASET_ROOT=/root/repo/lerobot/data/HuaihaiLyu/Basket_banana
+JOB_NAME=${POLICY_TYPE}_agilex_baseline_Basket_banana_one_task
 
-JOB_NAME=${MACHINE_NAME}_baseline_groceires_400
+DATASET_NAME=$(basename "$DATASET_ROOT")
 
 TIMESTAMP=$(date +%Y%m%d_%H%M%S)
-OUTPUT_DIR=outputs/train/${MACHINE_NAME}/${POLICY_TYPE}/${TIMESTAMP}_${JOB_NAME}
+OUTPUT_DIR=outputs/train/${TIMESTAMP}_${JOB_NAME}
 mkdir -p $OUTPUT_DIR
 LOG_FILE=$OUTPUT_DIR/train.log
 
+echo "Launching training for $JOB_NAME on GPU $CUDA_VISIBLE_DEVICES"
 python lerobot/scripts/train.py \
   --dataset.repo_id=HuaihaiLyu/$DATASET_NAME \
   --dataset.root=$DATASET_ROOT\
@@ -70,8 +73,9 @@ python lerobot/scripts/train.py \
   --policy.device=cuda \
   --dataset.use_hetero=false \
   --dataset.use_relative_as=false \
-  --steps=60000 \
-  --wandb.enable=false 2>&1 | tee $LOG_FILE
+  --batch_size=8 \
+  --steps=200000 \
+  --wandb.enable=true  2>&1 | tee $LOG_FILE
 
 # ------------------resume from last checkpoint------------------
 # export CUDA_VISIBLE_DEVICES=5

@@ -80,7 +80,9 @@ class ACTPolicy(PreTrainedPolicy):
             self.normalize_inputs[repo_id] = Normalize(config.input_features, config.normalization_mapping, dataset_stats).cuda()
             self.normalize_targets[repo_id] = Normalize(config.output_features, config.normalization_mapping, dataset_stats).cuda()
             self.unnormalize_outputs[repo_id] = Unnormalize(config.output_features, config.normalization_mapping, dataset_stats).cuda()
-
+        
+        print("---------------repo_id-------------", repo_id)
+        
         if hetero_dataset_stats is not None:
             for key in hetero_dataset_stats.keys():
                 self.normalize_inputs[key] = Normalize(hetero_configs[key].input_features, hetero_configs[key].normalization_mapping, hetero_dataset_stats[key]).cuda()
@@ -170,7 +172,13 @@ class ACTPolicy(PreTrainedPolicy):
         # we are ensembling over.
         if self.config.temporal_ensemble_coeff is not None:
             actions = self.model(batch)[0]  # (batch_size, chunk_size, action_dim)
-            actions = self.unnormalize_outputs({"action": actions})["action"]
+            unnormalize_outputs_instances = [self.unnormalize_outputs[batch["repo_id"]]]
+            for key in self.config.output_features.keys():
+                batch_dict = [unnormalize_outputs_instance({key: actions}) for i, unnormalize_outputs_instance in enumerate(unnormalize_outputs_instances)]
+                batch_data = torch.cat([d[key] for d in batch_dict], dim=0)
+                batch[key] = batch_data
+            actions = batch["action"]
+            
             action = self.temporal_ensembler.update(actions)
             return action
 
@@ -178,7 +186,7 @@ class ACTPolicy(PreTrainedPolicy):
         # querying the policy.
         if len(self._action_queue) == 0:
             actions = self.model(batch)[0][:, : self.config.n_action_steps]
-
+            print('actions', actions.shape)
             # TODO(rcadene): make_forward return output dictionary?
             unnormalize_outputs_instances = [self.unnormalize_outputs[batch["repo_id"]]]
             for key in self.config.output_features.keys():
@@ -186,6 +194,7 @@ class ACTPolicy(PreTrainedPolicy):
                 batch_data = torch.cat([d[key] for d in batch_dict], dim=0)
                 batch[key] = batch_data
             actions = batch["action"]
+            print('batch_data actions', actions.shape)
             # `self.model.forward` returns a (batch_size, n_action_steps, action_dπim) tensor, but the queue
             # effectively has shape (n_action_steps, batch_size, *), hence the transpose.
             self._action_queue.extend(actions.transpose(0, 1))
