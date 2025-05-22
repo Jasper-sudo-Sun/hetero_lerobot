@@ -402,15 +402,24 @@ class ACT(nn.Module):
 
         # Backbone for image feature extraction.
         if self.config.image_features:
-            backbone_model = getattr(torchvision.models, config.vision_backbone)(
-                replace_stride_with_dilation=[False, False, config.replace_final_stride_with_dilation],
-                weights=config.pretrained_backbone_weights,
-                norm_layer=FrozenBatchNorm2d,
-            )
-            # Note: The assumption here is that we are using a ResNet model (and hence layer4 is the final
-            # feature map).
-            # Note: The forward method of this returns a dict: {"feature_map": output}.
-            self.backbone = IntermediateLayerGetter(backbone_model, return_layers={"layer4": "feature_map"})
+            if isinstance(self.config.image_features, dict):
+                self.backbones = nn.ModuleDict()
+                for cam_name in self.config.image_features.keys():
+                    backbone_name = self.config.vision_backbone[0]  # 默认使用第一个backbone，也可根据cam_name选择
+                    backbone_model = getattr(torchvision.models, backbone_name)(
+                        replace_stride_with_dilation=[False, False, self.config.replace_final_stride_with_dilation],
+                        weights=self.config.pretrained_backbone_weights[0],  # 默认使用第一个预训练权重
+                        norm_layer=FrozenBatchNorm2d,
+                    )
+                    self.backbones[cam_name] = IntermediateLayerGetter(backbone_model, return_layers={"layer4": "feature_map"})
+            else:
+                backbone_name = self.config.vision_backbone[0]
+                backbone_model = getattr(torchvision.models, backbone_name)(
+                    replace_stride_with_dilation=[False, False, self.config.replace_final_stride_with_dilation],
+                    weights=self.config.pretrained_backbone_weights[0],
+                    norm_layer=FrozenBatchNorm2d,
+                )
+                self.backbone = IntermediateLayerGetter(backbone_model, return_layers={"layer4": "feature_map"})
 
         # Transformer (acts as VAE decoder when training with the variational objective).
         self.encoder = ACTEncoder(config)
@@ -429,7 +438,7 @@ class ACT(nn.Module):
         self.encoder_latent_input_proj = nn.Linear(config.latent_dim, config.dim_model)
         if self.config.image_features:
             self.encoder_img_feat_input_proj = nn.Conv2d(
-                backbone_model.fc.in_features, config.dim_model, kernel_size=1
+                self.backbones[0](torch.randn(1, 3, 224, 224))["feature_map"].shape[1], config.dim_model, kernel_size=1
             )
         # Transformer encoder positional embeddings.
         n_1d_tokens = 1  # for the latent
@@ -556,18 +565,24 @@ class ACT(nn.Module):
             all_cam_features = []
             all_cam_pos_embeds = []
 
-            # For a list of images, the H and W may vary but H*W is constant.
-            for img in batch["observation.images"]:
-                cam_features = self.backbone(img)["feature_map"]
-                cam_pos_embed = self.encoder_cam_feat_pos_embed(cam_features).to(dtype=cam_features.dtype)
-                cam_features = self.encoder_img_feat_input_proj(cam_features)
-
-                # Rearrange features to (sequence, batch, dim).
-                cam_features = einops.rearrange(cam_features, "b c h w -> (h w) b c")
-                cam_pos_embed = einops.rearrange(cam_pos_embed, "b c h w -> (h w) b c")
-
-                all_cam_features.append(cam_features)
-                all_cam_pos_embeds.append(cam_pos_embed)
+            if isinstance(batch["observation.images"], dict):
+                for cam_name, img in batch["observation.images"].items():
+                    cam_features = self.backbones[cam_name](img)["feature_map"]
+                    cam_pos_embed = self.encoder_cam_feat_pos_embed(cam_features).to(dtype=cam_features.dtype)
+                    cam_features = self.encoder_img_feat_input_proj(cam_features)
+                    cam_features = einops.rearrange(cam_features, "b c h w -> (h w) b c")
+                    cam_pos_embed = einops.rearrange(cam_pos_embed, "b c h w -> (h w) b c")
+                    all_cam_features.append(cam_features)
+                    all_cam_pos_embeds.append(cam_pos_embed)
+            else:
+                for img in batch["observation.images"]:
+                    cam_features = self.backbone(img)["feature_map"]
+                    cam_pos_embed = self.encoder_cam_feat_pos_embed(cam_features).to(dtype=cam_features.dtype)
+                    cam_features = self.encoder_img_feat_input_proj(cam_features)
+                    cam_features = einops.rearrange(cam_features, "b c h w -> (h w) b c")
+                    cam_pos_embed = einops.rearrange(cam_pos_embed, "b c h w -> (h w) b c")
+                    all_cam_features.append(cam_features)
+                    all_cam_pos_embeds.append(cam_pos_embed)
 
             encoder_in_tokens.extend(torch.cat(all_cam_features, axis=0))
             encoder_in_pos_embed.extend(torch.cat(all_cam_pos_embeds, axis=0))

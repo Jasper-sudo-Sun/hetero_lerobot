@@ -28,7 +28,7 @@ class ACTConfig(PreTrainedConfig):
     Defaults are configured for training on bimanual Aloha tasks like "insertion" or "transfer".
 
     The parameters you will most likely need to change are the ones which depend on the environment / sensors.
-    Those are: `input_shapes` and 'output_shapes`.
+    Those are: `input_shapes` and 'output_shapes'.
 
     Notes on the inputs and outputs:
         - Either:
@@ -105,8 +105,8 @@ class ACTConfig(PreTrainedConfig):
 
     # Architecture.
     # Vision backbone.
-    vision_backbone: str = "resnet18"
-    pretrained_backbone_weights: str | None = "ResNet18_Weights.IMAGENET1K_V1"
+    vision_backbone: list[str] = field(default_factory=lambda: ["resnet18"])
+    pretrained_backbone_weights: list[str | None] = field(default_factory=lambda: ["ResNet18_Weights.IMAGENET1K_V1"])
     replace_final_stride_with_dilation: int = False
     # Transformer layers.
     pre_norm: bool = False
@@ -141,9 +141,9 @@ class ACTConfig(PreTrainedConfig):
         super().__post_init__()
 
         """Input validation (not exhaustive)."""
-        if not self.vision_backbone.startswith("resnet"):
+        if not self.vision_backbone[0].startswith("resnet"):
             raise ValueError(
-                f"`vision_backbone` must be one of the ResNet variants. Got {self.vision_backbone}."
+                f"`vision_backbone` must be one of the ResNet variants. Got {self.vision_backbone[0]}."
             )
         if self.temporal_ensemble_coeff is not None and self.n_action_steps > 1:
             raise NotImplementedError(

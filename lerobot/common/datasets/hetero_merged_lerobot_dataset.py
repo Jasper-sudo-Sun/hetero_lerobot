@@ -82,7 +82,7 @@ CODEBASE_VERSION = "v2.1"
 
 class HeteroMergedLerobotDataset(torch.utils.data.Dataset):
     def __init__(self, datasets: dict, hetero_datasets: dict, use_relative_as: bool):
-        self.datasets = datasets  # {"松宁": dataset1, "VisionPro": dataset2, "Pika": dataset3}
+        self.datasets = datasets  # {"agilex": dataset1, "VisionPro": dataset2, "Pika": dataset3}
 
         self.total_frames = 0
         self.total_episodes = 0
