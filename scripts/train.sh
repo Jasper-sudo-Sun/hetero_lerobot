@@ -52,9 +52,9 @@ conda activate lerobot
 cd /home/sunqianpu/share_project/repo/lerobot
 export CUDA_VISIBLE_DEVICES=0
 # agilex_build_blocks agilex_groceries agilex_fold_pants  agilex_pour_tea  agilex_stack_basket agilex_pour_bowl
-POLICY_TYPE=diffusion
-DATASET_ROOT=/root/repo/lerobot/data/HuaihaiLyu/Basket_banana
-JOB_NAME=${POLICY_TYPE}_agilex_baseline_Basket_banana_one_task
+POLICY_TYPE=act 
+DATASET_ROOT=/share/project/lvhuaihai/robot_data/lerobot/HuaihaiLyu/''''pika_pour_banana''''
+JOB_NAME=${POLICY_TYPE}_pika_pour_banana_relative_baseline
 
 DATASET_NAME=$(basename "$DATASET_ROOT")
 
@@ -72,7 +72,7 @@ python lerobot/scripts/train.py \
   --job_name=${JOB_NAME} \
   --policy.device=cuda \
   --dataset.use_hetero=false \
-  --dataset.use_relative_as=false \
+  --dataset.use_relative_as=true \
   --batch_size=8 \
   --steps=200000 \
   --wandb.enable=true  2>&1 | tee $LOG_FILE

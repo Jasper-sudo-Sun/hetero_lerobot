@@ -365,6 +365,7 @@ class LeRobotDataset(torch.utils.data.Dataset):
         force_cache_sync: bool = False,
         download_videos: bool = True,
         video_backend: str | None = None,
+        use_relative_as: bool = False,
     ):
         """
         2 modes are available for instantiating this class, depending on 2 different use cases:
@@ -491,7 +492,7 @@ class LeRobotDataset(torch.utils.data.Dataset):
         if self.episodes is not None and self.meta._version >= packaging.version.parse("v2.1"):
             episodes_stats = [self.meta.episodes_stats[ep_idx] for ep_idx in self.episodes]
             self.stats = aggregate_stats(episodes_stats)
-
+        self.use_relative_as = use_relative_as
         # Load actual data
         try:
             if force_cache_sync:
@@ -749,7 +750,15 @@ class LeRobotDataset(torch.utils.data.Dataset):
 
     def __len__(self):
         return self.num_frames
-
+    
+    def to_relative(self, action):
+        # data shape: (T, 38)
+        relative = np.zeros_like(action)
+        relative[1:] = action[1:] - action[:-1]
+        # 第一个时刻没有前一个时刻，可以保留为0或复制下一帧
+        # relative[0] = data[1] - data[0]  # 可选
+        return relative
+    
     def __getitem__(self, idx) -> dict:
         item = self.hf_dataset[idx]
         ep_idx = item["episode_index"].item()
@@ -781,6 +790,15 @@ class LeRobotDataset(torch.utils.data.Dataset):
         task_idx = item["task_index"].item()
         item["task"] = self.meta.tasks[task_idx]
         item["repo_id"] = self.repo_id
+        
+        if "action" in item and self.use_relative_as:
+            relative_action = self.to_relative(item["action"])
+            item["action"] = torch.from_numpy(relative_action).to(item["observation.images.cam_high"].device)
+        
+        if "observation.state" in item and self.use_relative_as:
+            relative_state = self.to_relative(item["observation.state"])
+            item["observation.state"] = torch.from_numpy(relative_state).to(item["observation.images.cam_high"].device)
+
         return item
 
     def __repr__(self):
