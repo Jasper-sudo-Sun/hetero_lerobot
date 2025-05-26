@@ -776,8 +776,8 @@ class LeRobotDataset(torch.utils.data.Dataset):
             query_timestamps = self._get_query_timestamps(current_ts, query_indices)
             video_frames = self._query_videos(query_timestamps, ep_idx)
             
-            #TODO(sqp): hard_code
-            video_frames['observation.images.cam_high'] = resize(video_frames['observation.images.cam_high'], size=[480, 640])
+            if 'observation.images.cam_high' in video_frames and video_frames['observation.images.cam_high'] is not None:
+                video_frames['observation.images.cam_high'] = resize(video_frames['observation.images.cam_high'], size=[480, 640])
 
             item = {**video_frames, **item}
 
