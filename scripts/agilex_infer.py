@@ -4,7 +4,7 @@ import torch
 import pandas as pd
 import torchvision.transforms.functional as TF
 import numpy as np 
-
+from scipy.spatial.transform import Rotation as R
 from lerobot.common.policies.factory import make_policy
 from lerobot.configs.policies import PreTrainedConfig
 from lerobot.common.datasets.lerobot_dataset import LeRobotDatasetMetadata
@@ -196,6 +196,34 @@ def action_publish(pred_action):
     )
     piper_right.MotionCtrl_2(0x01, 0x00, 50, 0x00)
 
+def xyzrpy_to_mat(x, y, z, roll, pitch, yaw):
+    T = np.eye(4)
+    T[:3, 3] = [x, y, z]
+    T[:3, :3] = R.from_euler('xyz', [roll, pitch, yaw]).as_matrix()
+    return T
+
+def mat_to_xyzrpy(T):
+    x, y, z = T[:3, 3]
+    roll, pitch, yaw = R.from_matrix(T[:3, :3]).as_euler('xyz')
+    return [x, y, z, roll, pitch, yaw]
+
+def relative_to_absolute_poses(pred_action, abs_pose):
+    """
+    pred_action: (100, 6) list of relative [dx, dy, dz, droll, dpitch, dyaw]
+    abs_pose: [x, y, z, roll, pitch, yaw] initial absolute pose in base frame
+    return: (100, 6) list of absolute poses in base frame
+    """
+    abs_poses = []
+    T_abs = xyzrpy_to_mat(*abs_pose)
+
+    for i in range(pred_action.shape[0]):
+        delta = pred_action[i].tolist()
+        T_delta = xyzrpy_to_mat(*delta)
+        T_abs = T_abs @ T_delta  # transform delta into base frame
+        abs_pose = mat_to_xyzrpy(T_abs)
+        abs_poses.append(abs_pose)
+
+    return np.array(abs_poses)  # shape: (101, 6)
 
 if __name__ == "__main__":
     # repo_id doesn't matter.
@@ -211,9 +239,16 @@ if __name__ == "__main__":
     
     while True:
         with torch.no_grad():
-            observation = get_obs()
+            # === obs acquire
+            observation, abs_pose = get_obs()
+            # === infer
             pred_action = policy.forward_action(observation).squeeze()
-            action_publish(pred_action)
+            # === 将当前相对动作转换为绝对位姿序列
+            pred_abs_action = relative_to_absolute_poses(pred_action.cpu().numpy(), abs_pose)
+            
+            for i in range(50):
+                action_publish(pred_abs_action[i])
+
             import pdb
             pdb.set_trace()
 
