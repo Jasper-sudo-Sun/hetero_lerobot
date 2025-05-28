@@ -119,9 +119,171 @@ class DualPikaGripper:
         self.right_pub.publish(right_msg)
         rospy.loginfo(f"Left gripper: {left_angle} rad, Right gripper: {right_angle} rad.")
 
+import rospy
+from sensor_msgs.msg import Image, CameraInfo, JointState
+from geometry_msgs.msg import PoseStamped
+from std_msgs.msg import Float64MultiArray, Header
+from data_msgs.msg import Gripper
+import os
+import time
+import numpy as np
+from piper_sdk import C_PiperInterface
 def get_obs():
     # TODO: LiMing Chen
-    return
+    """
+    获取所有观测数据的函数，包括机械臂状态、相机图像和夹爪状态
+    Returns:
+        dict: 包含所有观测数据的字典
+    """
+    try:
+        # 初始化ROS节点
+        if not rospy.is_initialized():
+            rospy.init_node('obs_collector', anonymous=True)
+        
+        print("🚀 开始初始化双臂系统...")
+        
+        # 初始化数据存储变量
+        obs_data = {
+            'fisheye_l_image': None,
+            'fisheye_r_image': None,
+            'realsense_l_color_image': None,
+            'realsense_r_color_image': None,
+            'gripper_l_state': None,
+            'gripper_r_state': None,
+            'left_arm_position': None,
+            'right_arm_position': None
+        }
+        
+        # 定义回调函数
+        def fisheye_l_image_callback(msg):
+            obs_data['fisheye_l_image'] = msg
+            
+        def fisheye_r_image_callback(msg):
+            obs_data['fisheye_r_image'] = msg
+            
+        def realsense_l_color_image_callback(msg):
+            obs_data['realsense_l_color_image'] = msg
+            
+        def realsense_r_color_image_callback(msg):
+            obs_data['realsense_r_color_image'] = msg
+            
+        def gripper_l_state_callback(msg):
+            obs_data['gripper_l_state'] = msg
+            
+        def gripper_r_state_callback(msg):
+            obs_data['gripper_r_state'] = msg
+
+        # 创建订阅者
+        rospy.Subscriber("/camera_fisheye_l/color/image_raw", Image, fisheye_l_image_callback)
+        rospy.Subscriber("/camera_fisheye_r/color/image_raw", Image, fisheye_r_image_callback)
+        rospy.Subscriber("/camera_l/color/image_raw", Image, realsense_l_color_image_callback)
+        rospy.Subscriber("/camera_r/color/image_raw", Image, realsense_r_color_image_callback)
+        rospy.Subscriber("/gripper_l/joint_states", JointState, gripper_l_state_callback)
+        rospy.Subscriber("/gripper_r/joint_states", JointState, gripper_r_state_callback)
+
+        # 创建夹爪控制器发布者
+        left_gripper_pub = rospy.Publisher('/gripper_l/ctrl', Gripper, queue_size=10)
+        right_gripper_pub = rospy.Publisher('/gripper_r/ctrl', Gripper, queue_size=10)
+
+        # 使能夹爪
+        gripper_msg = Gripper()
+        gripper_msg.header = Header()
+        gripper_msg.header.stamp = rospy.Time.now()
+        gripper_msg.enable = True
+        gripper_msg.setZero = False
+        gripper_msg.angle = 0.0
+        gripper_msg.distance = 0.0
+        gripper_msg.effort = 0.0
+        gripper_msg.velocity = 0.0
+
+        left_gripper_pub.publish(gripper_msg)
+        right_gripper_pub.publish(gripper_msg)
+        print("✅ 夹爪控制器初始化完成")
+
+        # 初始化机械臂
+        print("🔧 正在连接左机械臂...")
+        piper_left = C_PiperInterface("can_left", False)
+        piper_left.ConnectPort()
+        piper_left.EnableArm(7)
+        enable_fun(piper=piper_left)
+        
+        piper_left.MotionCtrl_2(0x01, 0x01, 50, 0x00)
+        piper_left.JointCtrl(0, 0, 0, 0, 0, 0)
+        piper_left.GripperCtrl(abs(0), 1000, 0x01, 0)
+        piper_left.MotionCtrl_2(0x01, 0x01, 50, 0x00)
+        print("✅ 左机械臂初始化完成")
+
+        print("🔧 正在连接右机械臂...")
+        piper_right = C_PiperInterface("can_right", False)
+        piper_right.ConnectPort()
+        piper_right.EnableArm(7)
+        enable_fun(piper=piper_right)
+        
+        piper_right.MotionCtrl_2(0x01, 0x01, 50, 0x00)
+        piper_right.JointCtrl(0, 0, 0, 0, 0, 0)
+        piper_right.GripperCtrl(abs(0), 1000, 0x01, 0)
+        piper_right.MotionCtrl_2(0x01, 0x01, 50, 0x00)
+        print("✅ 右机械臂初始化完成")
+
+        # 等待所有数据就绪
+        print("📊 等待数据收集...")
+        timeout = time.time() + 10.0  # 10秒超时
+        while not rospy.is_shutdown():
+            if all(value is not None for value in obs_data.values()):
+                break
+            if time.time() > timeout:
+                raise TimeoutError("等待数据超时")
+            rospy.sleep(0.1)
+
+        # 获取机械臂位置
+        def get_piper_position(piper, arm_name):
+            try:
+                position = piper.GetArmEndPoseMsgs()
+                position_value = []
+                position_value += [position.end_pose.X_axis * 0.001 * 0.001]
+                position_value += [position.end_pose.Y_axis * 0.001 * 0.001]
+                position_value += [position.end_pose.Z_axis * 0.001 * 0.001]
+                position_value += [position.end_pose.RX_axis * 0.001 / 360 * 2 * np.pi]
+                position_value += [position.end_pose.RY_axis * 0.001 / 360 * 2 * np.pi]
+                position_value += [position.end_pose.RZ_axis * 0.001 / 360 * 2 * np.pi]
+                
+                print(f"\n========== {arm_name} Piper 机械臂实时位置 ==========")
+                print(f"位置 (m): X={position_value[0]:.6f}, Y={position_value[1]:.6f}, Z={position_value[2]:.6f}")
+                print(f"姿态 (rad): RX={position_value[3]:.6f}, RY={position_value[4]:.6f}, RZ={position_value[5]:.6f}")
+                print(f"原始数据: X={position.end_pose.X_axis}, Y={position.end_pose.Y_axis}, Z={position.end_pose.Z_axis}")
+                print(f"原始姿态: RX={position.end_pose.RX_axis}, RY={position.end_pose.RY_axis}, RZ={position.end_pose.RZ_axis}")
+                print("=" * 50)
+                
+                return position_value
+            except Exception as e:
+                print(f"❌ 获取{arm_name}机械臂位置失败: {e}")
+                return [0.0] * 6
+
+        # 获取机械臂位置数据
+        print(f"\n🤖 [{time.strftime('%H:%M:%S')}] 正在获取机械臂位置信息...")
+        obs_data['left_arm_position'] = get_piper_position(piper_left, "Left")
+        obs_data['right_arm_position'] = get_piper_position(piper_right, "Right")
+
+        # 打印数据状态
+        print(f"\n📷 [{time.strftime('%H:%M:%S')}] 相机数据状态:")
+        print(f"  左鱼眼相机: {obs_data['fisheye_l_image'].width}x{obs_data['fisheye_l_image'].height}")
+        print(f"  右鱼眼相机: {obs_data['fisheye_r_image'].width}x{obs_data['fisheye_r_image'].height}")
+        print(f"  左RealSense: {obs_data['realsense_l_color_image'].width}x{obs_data['realsense_l_color_image'].height}")
+        print(f"  右RealSense: {obs_data['realsense_r_color_image'].width}x{obs_data['realsense_r_color_image'].height}")
+
+        print(f"\n🦾 [{time.strftime('%H:%M:%S')}] 夹爪状态:")
+        print(f"  左夹爪位置: {obs_data['gripper_l_state'].position}")
+        print(f"  右夹爪位置: {obs_data['gripper_r_state'].position}")
+
+        print(f"\n✅ [{time.strftime('%H:%M:%S')}] 观测数据收集完成")
+        print(f"{'='*60}")
+
+        return obs_data
+
+    except Exception as e:
+        print(f"❌ 获取观测数据失败: {e}")
+        return None
+
 
 def action_publish(pred_action):
     """
