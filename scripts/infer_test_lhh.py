@@ -9,27 +9,17 @@ from lerobot.common.policies.factory import make_policy
 from lerobot.configs.policies import PreTrainedConfig
 from lerobot.common.datasets.lerobot_dataset import LeRobotDatasetMetadata
 import torch.nn.functional as F
+cam_left_path = "/share/project/lvhuaihai/robot_data/lerobot/HuaihaiLyu/pika_pick_peach_without_ego_feat/videos/chunk-000/observation.images.cam_left_wrist/episode_000000.mp4"
 
-cam_front_path = "/share/project/lvhuaihai/robot_data/lerobot/realman/rm_groceries/videos/chunk-000/observation.images.cam_high/episode_000000.mp4"
+cam_right_path = "/share/project/lvhuaihai/robot_data/lerobot/HuaihaiLyu/pika_pick_peach_without_ego_feat/videos/chunk-000/observation.images.cam_right_wrist/episode_000000.mp4"
 
-cam_left_path = "/share/project/lvhuaihai/robot_data/lerobot/realman/rm_groceries/videos/chunk-000/observation.images.cam_left_wrist/episode_000000.mp4"
+cam_left_fisheye_path = "/share/project/lvhuaihai/robot_data/lerobot/HuaihaiLyu/pika_pick_peach_without_ego_feat/videos/chunk-000/observation.images.cam_left_wrist_fisheye/episode_000000.mp4"
 
-cam_right_path = "/share/project/lvhuaihai/robot_data/lerobot/realman/rm_groceries/videos/chunk-000/observation.images.cam_right_wrist/episode_000000.mp4"
-# 状态数据路径
-state_path = '/share/project/lvhuaihai/robot_data/lerobot/realman/rm_groceries/data/chunk-000/episode_000000.parquet'
+cam_right_fisheye_path = "/share/project/lvhuaihai/robot_data/lerobot/HuaihaiLyu/pika_pick_peach_without_ego_feat/videos/chunk-000/observation.images.cam_right_wrist_fisheye/episode_000000.mp4"
 
-checkpoint_dir = "/home/sunqianpu/share_project/repo/lerobot/outputs/train/20250513_125346_realman_baseline_groceries/checkpoints/060000/pretrained_model"
-# /share/project/lvhuaihai/lvhuaihai/hetero_lerobot/outputs/train/pika/act/pika_pour_banana_delta_pika_20250523_005909/checkpoints/100000
-# cam_front_path = "/home/sunqianpu/share_project/repo/lerobot/data/HuaihaiLyu/agilex_groceries_400/videos/chunk-000/observation.images.cam_high/episode_000000.mp4"
+state_path = '/share/project/lvhuaihai/robot_data/lerobot/HuaihaiLyu/pika_pick_peach_without_ego_feat/data/chunk-000/episode_000000.parquet'
 
-# cam_left_path = "/home/sunqianpu/share_project/repo/lerobot/data/HuaihaiLyu/agilex_groceries_400/videos/chunk-000/observation.images.cam_left_wrist/episode_000000.mp4"
-
-# cam_right_path = "/home/sunqianpu/share_project/repo/lerobot/data/HuaihaiLyu/agilex_groceries_400/videos/chunk-000/observation.images.cam_right_wrist/episode_000000.mp4"
-# # 状态数据路径
-# state_path = '/home/sunqianpu/share_project/repo/lerobot/data/HuaihaiLyu/agilex_groceries_400/data/chunk-000/episode_000000.parquet'
-
-# # # 模型 checkpoint 路径
-# checkpoint_dir = "/home/sunqianpu/share_project/ckpts/train/act/20250512_005246_agilex_groceries_400_decoder_7_nrealtive/checkpoints/150000/pretrained_model"
+checkpoint_dir = "/share/project/lvhuaihai/lvhuaihai/hetero_lerobot/outputs/train/pika/act/pika_pick_peach_without_ego_feat_20250528_015121/checkpoints/090000/pretrained_model"
 
 def extract_frame(video_path, frame_number=0):
     """从视频中读取指定帧图像"""
@@ -54,53 +44,63 @@ def extract_frame(video_path, frame_number=0):
 
 def get_obs_n_frame(frame_num=0):
     """构造某一帧的 observation 数据"""
-    cam_front = torch.from_numpy(extract_frame(cam_front_path, frame_num)).permute(2, 0, 1) / 255
-    cam_front = TF.resize(cam_front, size=[480, 640]).unsqueeze(0).float()
+    # cam_front = torch.from_numpy(extract_frame(cam_front_path, frame_num)).permute(2, 0, 1) / 255
+    # cam_front = TF.resize(cam_front, size=[480, 640]).unsqueeze(0).float()
 
     cam_left = torch.from_numpy(extract_frame(cam_left_path, frame_num)).permute(2, 0, 1).unsqueeze(0).float() / 255
     cam_right = torch.from_numpy(extract_frame(cam_right_path, frame_num)).permute(2, 0, 1).unsqueeze(0).float() / 255
     
-    cam_front, cam_left, cam_right = get_obs_from_photo()
+    cam_left_fisheye = torch.from_numpy(extract_frame(cam_left_fisheye_path, frame_num)).permute(2, 0, 1).unsqueeze(0).float() / 255
+    cam_right_fisheye = torch.from_numpy(extract_frame(cam_right_fisheye_path, frame_num)).permute(2, 0, 1).unsqueeze(0).float() / 255
     # print(cam_front.shape, cam_left.shape, cam_right.shape)
     # 加载 robot 状态
     df = pd.read_parquet(state_path)
     if frame_num >= len(df):
         raise IndexError(f"帧号 {frame_num} 超出 parquet 数据范围 (共 {len(df)} 帧)")
-    state = df.iloc[frame_num]['observation.state'].astype("float32")
-    state_tensor = torch.tensor(state).unsqueeze(0)
+    # state = df.iloc[frame_num]['observation.state'].astype("float32")
+    # state_tensor = torch.tensor(state).unsqueeze(0)
     action = torch.tensor(
-        df.iloc[frame_num:frame_num+100]['observation.state'].tolist(),
+        df.iloc[frame_num:frame_num+100]['action'].tolist(),
         dtype=torch.float32
     )
     observation = {
-        "observation.state": state_tensor.to('cuda'),
-        "observation.images.cam_high": cam_front.to('cuda'),
+        # "observation.state": state_tensor.to('cuda'),
+        # "observation.images.cam_high": cam_front.to('cuda'),
         "observation.images.cam_left_wrist": cam_left.to('cuda'),
         "observation.images.cam_right_wrist": cam_right.to('cuda'),
+        "observation.images.cam_left_wrist_fisheye": cam_left_fisheye.to('cuda'),
+        "observation.images.cam_right_wrist_fisheye": cam_right_fisheye.to('cuda'),
         "prompt": "stack the brown basket on the black basket",
-        "repo_id": "HuaihaiLyu/agilex_groceries_400"
+        "repo_id": "HuaihaiLyu/pika_pick_peach_without_ego_feat"
     }
 
     return observation, action
 
-high_cam_path = "/mnt/hpfs/baaiei/qianpusun/lerobot/scripts/9951746172315_.pic.jpg"
-left_cam_path = "/mnt/hpfs/baaiei/qianpusun/lerobot/scripts/9961746172315_.pic.jpg"
-right_cam_path = "/mnt/hpfs/baaiei/qianpusun/lerobot/scripts/9971746172315_.pic.jpg"
+def compute_mse_at_frame(frame_num):
+    observation, next_action = get_obs_n_frame(frame_num)
+    gt_action = next_action.cuda()
 
-def get_obs_from_photo():
+    with torch.no_grad():
+        pred_action = policy.forward_action(observation).squeeze()
 
-    cam_high_photo = torch.from_numpy(cv2.cvtColor(cv2.imread(high_cam_path), cv2.COLOR_BGR2RGB)).permute(2, 0, 1).unsqueeze(0).float() / 255
-    cam_high_photo = TF.resize(cam_high_photo, size=[480, 640])
+        # 主体动作维度 MSE（14~25）
+        gt_sub = gt_action[:, 14:26]
+        pred_sub = pred_action[:, 14:26]
+        per_step_mse = F.mse_loss(pred_sub, gt_sub, reduction='none').mean(dim=1)
 
-    cam_left_photo = torch.from_numpy(cv2.cvtColor(cv2.imread(left_cam_path), cv2.COLOR_BGR2RGB)).permute(2, 0, 1).unsqueeze(0).float() / 255
+        # Gripper 动作维度 MSE（6 和 13）
+        gt_gripper = gt_action[:, [6, 13]]
+        pred_gripper = pred_action[:, [6, 13]]
+        gripper_mse = F.mse_loss(pred_gripper, gt_gripper, reduction='none').mean(dim=1)
 
-    cam_right_photo = torch.from_numpy(cv2.cvtColor(cv2.imread(right_cam_path), cv2.COLOR_BGR2RGB)).permute(2, 0, 1).unsqueeze(0).float() / 255
-    
-    return cam_high_photo, cam_left_photo, cam_right_photo
+        # 全维度动作 MSE（0~37）
+        total_mse = F.mse_loss(pred_action, gt_action, reduction='mean')
+
+        return per_step_mse.cpu(), gripper_mse.cpu(), total_mse.item()
 
 if __name__ == "__main__":
 
-    dataset_meta = LeRobotDatasetMetadata(repo_id="HuaihaiLyu/agilex_groceries_400", root='/share/project/lvhuaihai/robot_data/lerobot/realman/rm_groceries')
+    dataset_meta = LeRobotDatasetMetadata(repo_id="HuaihaiLyu/pika_pick_peach_without_ego_feat", root='/share/project/lvhuaihai/robot_data/lerobot/HuaihaiLyu/pika_pick_peach_without_ego_feat')
     # dataset_meta = LeRobotDatasetMetadata(repo_id="HuaihaiLyu/agilex_groceries_400", root='/root/data/lerobot_data/HuaihaiLyu/agilex_groceries_400')
 
     kwargs = {}
@@ -110,15 +110,24 @@ if __name__ == "__main__":
     policy_cfg.pretrained_path = checkpoint_dir
     policy = make_policy(policy_cfg, ds_meta=dataset_meta).to('cuda')
 
-    for j in range(3):
-        pred_actions = []
-        observation, next_action = get_obs_n_frame(100)
-        gt_action = next_action.cuda()
-        for i in range(0, 100):  # 推理前5帧
-            with torch.no_grad():
-                pred_action = policy.select_action(observation)
-                print('pred_action', pred_action.shape)
-            pred_actions.append(pred_action)
+    pred_actions = []
+    observation, next_action = get_obs_n_frame(100)
+    gt_action = next_action.cuda()
+
+    # 帧列表
+    frame_list = [100, 200, 300]
+
+    for frame_id in frame_list:
+        print(f"\n===== Frame {frame_id} =====")
+        per_step_mse, gripper_mse, total_mse = compute_mse_at_frame(frame_id)
+        print("Per-step MSE (14-25):", per_step_mse)
+        print("Gripper MSE (6 & 13):", gripper_mse)
+        print("Total MSE (0-37):", total_mse)
+
+        import pdb
+        pdb.set_trace()
+
+    # pred_actions.append(pred_action)
         # pred_actions = torch.cat(pred_actions, dim=0).cuda()
 
         # print('pred_action', pred_actions.shape)

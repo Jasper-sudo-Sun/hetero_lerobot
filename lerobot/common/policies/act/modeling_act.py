@@ -139,14 +139,29 @@ class ACTPolicy(PreTrainedPolicy):
         """
         self.eval()
 
-        batch = self.normalize_inputs(batch)
+        normalize_inputs_instances = [self.normalize_inputs[batch["repo_id"]]]
+        for key in self.config.input_features.keys():
+            batch_dict = [normalize_inputs_instance({key: batch[key][i].unsqueeze(0)}) for i, normalize_inputs_instance in enumerate(normalize_inputs_instances)]
+            batch_data = torch.cat([d[key] for d in batch_dict], dim=0)
+            batch[key] = batch_data
         if self.config.image_features:
             batch = dict(batch)  # shallow copy so that adding a key doesn't modify the original
             batch["observation.images"] = [batch[key] for key in self.config.image_features]
-            
+
+        # Action queue logic for n_action_steps > 1. When the action_queue is depleted, populate it by
+        # querying the policy.
         actions = self.model(batch)[0][:, : self.config.n_action_steps]
-        # TODO(rcadene): make _forward return output dictionary?
-        actions = self.unnormalize_outputs({"action": actions})["action"]
+        print('actions', actions.shape)
+        # TODO(rcadene): make_forward return output dictionary?
+        unnormalize_outputs_instances = [self.unnormalize_outputs[batch["repo_id"]]]
+        for key in self.config.output_features.keys():
+            batch_dict = [unnormalize_outputs_instance({key: actions}) for i, unnormalize_outputs_instance in enumerate(unnormalize_outputs_instances)]
+            batch_data = torch.cat([d[key] for d in batch_dict], dim=0)
+            batch[key] = batch_data
+        actions = batch["action"]
+        print('batch_data actions', actions.shape)
+        # `self.model.forward` returns a (batch_size, n_action_steps, action_dπim) tensor, but the queue
+        # effectively has shape (n_action_steps, batch_size, *), hence the transpose.
         return actions
         
     @torch.no_grad
@@ -536,7 +551,7 @@ class ACT(nn.Module):
             cls_joint_is_pad = torch.full(
                 (batch_size, 2 if self.config.robot_state_feature else 1),
                 False,
-                device=batch["observation.state"].device,
+                device=batch["action"].device,
             )
             key_padding_mask = torch.cat(
                 [cls_joint_is_pad, batch["action_is_pad"]], axis=1
@@ -559,9 +574,7 @@ class ACT(nn.Module):
             # When not using the VAE encoder, we set the latent to be all zeros.
             mu = log_sigma_x2 = None
             # TODO(rcadene, alexander-soare): remove call to `.to` to speedup forward ; precompute and use buffer
-            latent_sample = torch.zeros([batch_size, self.config.latent_dim], dtype=torch.float32).to(
-                batch["observation.state"].device
-            )
+            latent_sample = torch.zeros([batch_size, self.config.latent_dim], dtype=torch.float32).to("cuda")
 
         # Prepare transformer encoder inputs.
         encoder_in_tokens = [self.encoder_latent_input_proj(latent_sample)]

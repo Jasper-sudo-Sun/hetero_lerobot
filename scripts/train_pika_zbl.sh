@@ -6,7 +6,7 @@ POLICY_TYPE=act
 # 所有要训练的数据集名称
 DATASETS=(
     # "pika_pour_banana"
-    "pika_pick_peach_without_ego_feat"
+    "pika_pour_banana_delta"
     # "pika_pour_banana_withoutcentric"
     # "pika_pour_banana_withoutcentric_delta"
 )
@@ -19,7 +19,7 @@ GPU_ID=$START_GPU
 for DATASET_NAME in "${DATASETS[@]}"; do
     DATASET_ROOT="/share/project/lvhuaihai/robot_data/lerobot/HuaihaiLyu/${DATASET_NAME}"
     MACHINE_NAME=$(echo $DATASET_NAME | cut -d'_' -f1)
-    JOB_NAME="${DATASET_NAME}"
+    JOB_NAME="${DATASET_NAME}_pika"
     TIMESTAMP=$(date +%Y%m%d_%H%M%S)
     OUTPUT_DIR="outputs/train/${MACHINE_NAME}/${POLICY_TYPE}/${JOB_NAME}_${TIMESTAMP}"
     LOG_FILE="${OUTPUT_DIR}/train.log"
