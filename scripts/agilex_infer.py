@@ -49,7 +49,6 @@ def relative_to_absolute_poses(pred_action, abs_pose):
     """
     abs_poses = []
     T_abs = xyzrpy_to_mat(*abs_pose)
-    abs_poses.append(abs_pose)
 
     for i in range(pred_action.shape[0]):
         delta = pred_action[i].tolist()
@@ -74,11 +73,15 @@ if __name__ == "__main__":
     
     while True:
         with torch.no_grad():
-            observation = get_obs()
+            # === obs acquire
+            observation, abs_pose = get_obs()
+            # === infer
             pred_action = policy.forward_action(observation).squeeze()
+            # === 将当前相对动作转换为绝对位姿序列
+            pred_abs_action = relative_to_absolute_poses(pred_action.cpu().numpy(), abs_pose)
             
-            
-            action_publish(pred_action)
+            for i in range(50):
+                action_publish(pred_abs_action[i])
 
             import pdb
             pdb.set_trace()
