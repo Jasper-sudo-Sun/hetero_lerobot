@@ -12,6 +12,16 @@ import torch.nn.functional as F
 
 checkpoint_dir = "/share/project/lvhuaihai/lvhuaihai/hetero_lerobot/outputs/train/pika/act/pika_pick_peach_without_ego_feat_20250528_015121/checkpoints/090000/pretrained_model"
 
+# observation example:
+# observation = {
+#         "observation.images.cam_left_wrist": cam_left.to('cuda'),
+#         "observation.images.cam_right_wrist": cam_right.to('cuda'),
+#         "observation.images.cam_left_wrist_fisheye": cam_left_fisheye.to('cuda'),
+#         "observation.images.cam_right_wrist_fisheye": cam_right_fisheye.to('cuda'),
+#         "prompt": "stack the brown basket on the black basket",
+#         "repo_id": "HuaihaiLyu/pika_pick_peach_without_ego_feat"
+#     }
+
 def get_obs():
     # TODO: LiMing Chen
     return
